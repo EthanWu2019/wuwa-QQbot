@@ -205,7 +205,12 @@ async def send_group_text(
     session: aiohttp.ClientSession, token: str, group_openid: str, content: str, msg_id: str
 ) -> dict:
     url = f"{API_BASE}/v2/groups/{group_openid}/messages"
-    payload = {"content": _clean_text(content), "msg_type": 0, "msg_id": msg_id}
+    payload = {
+        "content": _clean_text(content),
+        "msg_type": 0,
+        "msg_id": msg_id,
+        "msg_seq": next_msg_seq(f"groups:{group_openid}"),
+    }
     async with session.post(url, headers=auth_headers(token), json=payload) as resp:
         return await resp.json()
 
@@ -237,9 +242,30 @@ async def _send_media_msg(
     url: str,
     msg_id: str,
 ) -> dict:
-    """上传 → 拿 file_info → 发富媒体消息。"""
-    upload = await _upload_media_by_url(session, token, kind, target_id, url)
-    file_info = upload.get("file_info") or (upload.get("data") or {}).get("file_info")
+    """
+    上传 → 拿 file_info → 发富媒体消息。
+
+    腾讯是**自己去拉**这个 URL。实测冷启动（tunnel 刚重连 / 刚重启服务）
+    第一张图会返回 `850027 富媒体文件上传超时`，等几秒后重试就正常。
+    所以这里做：失败重试 3 次，指数退避。
+    """
+    upload: dict = {}
+    file_info: str | None = None
+    for attempt in range(3):
+        upload = await _upload_media_by_url(session, token, kind, target_id, url)
+        file_info = upload.get("file_info") or (upload.get("data") or {}).get("file_info")
+        if file_info:
+            break
+        log.warning(
+            "富媒体登记失败(%s/%s) code=%s: %s",
+            attempt + 1,
+            3,
+            upload.get("code"),
+            upload.get("message"),
+        )
+        if attempt < 2:
+            await asyncio.sleep(3 * (attempt + 1))
+
     if not file_info:
         # 登记失败就把腾讯的原始报错带出去，别静默吞掉
         return {"upload_error": upload}
