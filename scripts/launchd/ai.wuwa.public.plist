@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.wuwa.public</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ethanwu/wuwa-QQbot/scripts/run_public.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/ethanwu/wuwa-QQbot</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/ethanwu/wuwa-QQbot/logs/public.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ethanwu/wuwa-QQbot/logs/public.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.wuwa.core</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ethanwu/wuwa-QQbot/scripts/run_core.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/ethanwu/wuwa-QQbot</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- 插件首启要下 ~100MB 资源，超时给足 -->
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/ethanwu/wuwa-QQbot/logs/core.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ethanwu/wuwa-QQbot/logs/core.err.log</string>
+</dict>
+</plist>

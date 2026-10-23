@@ -89,18 +89,48 @@ frame = msgjson.decode(data)                          # 出站 MessageSend
 用 msgpack 编会在 core 日志里报
 `上报的一帧无法解码为 MessageReceive：JSON is malformed: invalid character (byte 0)`。
 
+## 服务管理（launchd 常驻）
+
+三个服务已注册为 launchd，`KeepAlive=true`，崩溃自动拉起、开机自启：
+
+| Label | 作用 | 端口 |
+|---|---|---|
+| `ai.wuwa.core` | gsuid_core 宿主 | `*:8765` |
+| `ai.wuwa.public` | 图床 + 反代（Tunnel 指向它） | `*:8766` |
+| `ai.wuwa.adapter` | QQ 官方网关适配器 | — |
+
+```bash
+./scripts/wuwa.sh status                  # 状态 + 端口
+./scripts/wuwa.sh logs adapter 50         # 看日志
+./scripts/wuwa.sh restart core           # 重启单个服务
+./scripts/wuwa.sh stop                    # 全部停掉（调试时用）
+./scripts/wuwa.sh load                    # 重新加载全部
+```
+
+plist 在 `scripts/launchd/`，日志在 `logs/`，实现在 `~/Library/LaunchAgents/`。
+
+手动前台启动（调试用，**会与 launchd 抢端口**）：
+
+```bash
+./scripts/run_core.sh
+./scripts/run_public.sh
+./scripts/run_adapter.sh
+```
+
 ## 待办
 
-- [ ] **图床**（阻塞发图）：core 回程是 `base64://` 图片，官方 API 只收公网 URL
-- [ ] Cloudflare Tunnel：`qqbot.ethanshermes.com` → 127.0.0.1:8765，并把 core `host` 改 `0.0.0.0`
-- [ ] 登录链接公网化：插件配置 `WavesLoginUrl` = `https://qqbot.ethanshermes.com`
-- [ ] launchd 常驻 + 日志轮转
+- [x] launchd 常驻（三服务）+ KeepAlive 自动重启
+- [ ] 图片保留策略：目前 7 天自动清理（`IMG_RETENTION_DAYS`）
 
 ## 排障
 
 ```bash
 # 绕过 QQ 直接测 core 侧通不通
 .venv/bin/python scripts/probe.py "ww帮助"
+# 图床端到端（base64 → 落盘 → 公网取回）
+.venv/bin/python scripts/selftest_img.py
+# 确认 core 真的绑到 0.0.0.0
+lsof -nP -iTCP:8765 -sTCP:LISTEN   # 应显示 *:8765 而非 127.0.0.1:8765
 ```
 
 判断故障段：QQ 没反应先看 adapter 日志有没有 `收到事件 C2C_MESSAGE_CREATE`；
