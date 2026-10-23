@@ -69,12 +69,42 @@ ln -sfn /path/to/XutheringWavesUID vendor/gsuid_core/gsuid_core/plugins/Xutherin
 - 富媒体 `msg_type=7` + `media:{type:1,url:...}`，**URL 必须公网可达**
 - Intents：`(1<<25)群/C2C | (1<<30)@消息 | (1<<12)频道私信 | (1<<26)群成员`
 
+## 命令前缀（重要）
+
+**所有命令都要带 `ww` 前缀**：`ww帮助`、`ww签到`、`ww角色`…
+发裸 `帮助` 不会有任何反应。插件的 `PREFIX` 来自
+`get_plugin_available_prefix("XutheringWavesUID")`，实测值为 `ww`。
+若要去掉前缀，改插件侧 `allow_empty_prefix`，不要改 core。
+
+## 帧格式
+
+gsuid_core 收发的都是 **msgspec JSON 字节帧**，不是 msgpack：
+
+```python
+from msgspec import json as msgjson
+await ws.send_bytes(msgjson.encode(frame))          # 入站 MessageReceive
+frame = msgjson.decode(data)                          # 出站 MessageSend
+```
+
+用 msgpack 编会在 core 日志里报
+`上报的一帧无法解码为 MessageReceive：JSON is malformed: invalid character (byte 0)`。
+
 ## 待办
 
-- [ ] Cloudflare Tunnel：`qqbot.ethanshermes.com` → 127.0.0.1:8765
-- [ ] 登录链接公网化：core 配置 `WavesLoginUrl` = `https://qqbot.ethanshermes.com`
-- [ ] 图片发送：core 产出本地图片/base64，需自建图床转公网 URL
+- [ ] **图床**（阻塞发图）：core 回程是 `base64://` 图片，官方 API 只收公网 URL
+- [ ] Cloudflare Tunnel：`qqbot.ethanshermes.com` → 127.0.0.1:8765，并把 core `host` 改 `0.0.0.0`
+- [ ] 登录链接公网化：插件配置 `WavesLoginUrl` = `https://qqbot.ethanshermes.com`
 - [ ] launchd 常驻 + 日志轮转
+
+## 排障
+
+```bash
+# 绕过 QQ 直接测 core 侧通不通
+.venv/bin/python scripts/probe.py "ww帮助"
+```
+
+判断故障段：QQ 没反应先看 adapter 日志有没有 `收到事件 C2C_MESSAGE_CREATE`；
+有事件但无回复就跑 probe.py 区分是 core 还是插件的问题。
 
 ## 致谢
 

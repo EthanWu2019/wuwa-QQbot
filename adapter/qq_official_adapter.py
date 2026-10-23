@@ -34,6 +34,7 @@ from typing import Any, Optional
 
 import aiohttp
 import msgspec
+from msgspec import json as msgjson
 
 log = logging.getLogger("qq_official_adapter")
 
@@ -134,14 +135,13 @@ class CoreClient:
                 backoff = min(backoff * 2, 30)
 
     async def _handle(self, data: bytes) -> None:
+        """
+        core 出站也是 JSON 字节帧（gsuid_core 用 msgspec.json.encode）。
+        注意：不是 msgpack —— 早柚核心 handler.py:8 是
+        `from msgspec import json as msgjson`。
+        """
         try:
-            frame = msgspec.json.decode(data)  # 占位，下面按实际格式覆盖
-        except Exception:
-            frame = None
-        try:
-            import msgspec.msgpack as mp
-
-            frame = mp.decode(data)
+            frame = msgjson.decode(data)
         except Exception as exc:
             log.warning("解码 MessageSend 失败: %s", exc)
             return
@@ -154,9 +154,7 @@ class CoreClient:
         if not self.connected:
             log.warning("core 未连接，丢弃一条消息")
             return
-        import msgspec.msgpack as mp
-
-        await self._ws.send_bytes(mp.encode(payload))
+        await self._ws.send_bytes(msgjson.encode(payload))
 
 
 # ── QQ 官方 API 发消息 ─────────────────────────────────────────────────
