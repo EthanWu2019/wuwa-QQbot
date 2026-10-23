@@ -7,3 +7,7 @@ data/
 logs/
 data/
 logs/
+data/
+assets/bot_avatar.png
+.version.py.bak
+.*.py.bak
