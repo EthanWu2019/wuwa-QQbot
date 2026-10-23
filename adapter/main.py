@@ -38,6 +38,7 @@ from adapter.qq_official_adapter import (  # noqa: E402
     _extract_images,
     _to_text,
 )
+from adapter.imgserver import public_url, save_image, sniff_suffix
 
 logging.basicConfig(
     level=logging.INFO,
@@ -210,6 +211,10 @@ class QQOfficialBot:
 
         token = await token_mgr.get(self.session)
 
+        # 官方富媒体要求 content 非空，纯图消息要带一个占位文本
+        if images and not text:
+            text = " "
+
         # 1) 图片优先（鸣潮面板都是图）
         for img in images:
             url = self._normalize_image_url(img)
@@ -245,15 +250,53 @@ class QQOfficialBot:
 
     def _normalize_image_url(self, val: str) -> str:
         """
-        gsuid_core 可能给 base64 / 本地路径 / 公网 URL。
-        官方 API 只接受公网可达 URL，本地路径需要我们自建图床。
+        gsuid_core 回程图片是 `base64://<data>` 或本地路径。
+        腾讯官方富媒体只接受公网可达 URL，所以这里落盘后换成图床 URL。
         """
         if val.startswith("http://") or val.startswith("https://"):
             return val
-        if val.startswith("data:"):
-            b64 = val.split(",", 1)[1]
-            return f"{self.public_base}/img/{b64[:32]}"  # 占位，见 README
-        return ""
+
+        raw: Optional[bytes] = None
+        suffix = ".jpg"
+
+        if val.startswith("base64://"):
+            try:
+                raw = base64.b64decode(val[len("base64://") :])
+            except Exception as exc:
+                log.warning("base64 解码失败: %s", exc)
+                return ""
+        elif val.startswith("data:"):
+            # data:image/png;base64,XXXX
+            try:
+                header, b64 = val.split(",", 1)
+                if "png" in header:
+                    suffix = ".png"
+                elif "webp" in header:
+                    suffix = ".webp"
+                raw = base64.b64decode(b64)
+            except Exception as exc:
+                log.warning("data URI 解析失败: %s", exc)
+                return ""
+        elif val.startswith("/") or val.startswith("file://"):
+            path = Path(val.replace("file://", ""))
+            if not path.exists():
+                log.warning("图片文件不存在: %s", path)
+                return ""
+            raw = path.read_bytes()
+            if path.suffix.lower() in (".png", ".webp", ".gif", ".jpg", ".jpeg"):
+                suffix = path.suffix.lower()
+        else:
+            log.warning("无法识别的图片数据前缀: %.32s", val)
+            return ""
+
+        if not raw:
+            return ""
+
+        suffix = sniff_suffix(raw, suffix)
+        h = save_image(raw, suffix)
+        url = public_url(h, suffix)
+        log.info("图片已落盘 -> %s%s (%d bytes)", h, suffix, len(raw))
+        return url
 
 
 def ssl_ctx():
