@@ -35,6 +35,12 @@ HOST = os.getenv("IMG_HOST", "0.0.0.0")
 PORT = int(os.getenv("IMG_PORT", "8766"))
 CORE_UPSTREAM = os.getenv("CORE_UPSTREAM", "http://127.0.0.1:8765")
 RETENTION_DAYS = int(os.getenv("IMG_RETENTION_DAYS", "7"))
+# 面板图重压质量，0 = 不压。想省体积调小（75~85 之间画质基本无损）。
+JPEG_QUALITY = int(os.getenv("IMG_JPEG_QUALITY", "85"))
+# 面板图宽度封顶（像素）。原图 2495 宽是给 PC 看的，手机上 1080 已足够。
+# 设为 0 则不缩放。
+IMG_MAX_WIDTH = int(os.getenv("IMG_MAX_WIDTH", "1080"))
+MAX_WIDTH = IMG_MAX_WIDTH
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://qqbot.ethanshermes.com").rstrip("/")
 
 NAME_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|jpeg|png|webp|gif)$")
@@ -81,9 +87,41 @@ _HOP = {
 }
 
 
-def save_image(data: bytes, suffix: str = ".jpg") -> str:
+def compress(data: bytes, suffix: str = ".jpg", quality: int = JPEG_QUALITY) -> tuple[bytes, str]:
+    """
+    面板图原样是 2495×5967（14.9M 像素、1.7MB），QQ 上根本用不到这么大，
+    加载也慢。这里做「分辨率封顶 + 重压」：
+      2495×5967 @q85  1.7MB  →  1080×2582 @q85  469KB（1/3.7）
+
+    只处理 JPEG；PNG 带透明通道，重压会丢透明，所以原样保留。
+    压不动（压完反而更大）就返回原图。
+    """
+    if suffix.lower() not in (".jpg", ".jpeg") or quality <= 0:
+        return data, suffix
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(BytesIO(data)) as im:
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            # 宽度封顶：手机上看 1080 足够，再大只是浪费流量和加载时间
+            if MAX_WIDTH > 0 and im.width > MAX_WIDTH:
+                h = round(im.height * MAX_WIDTH / im.width)
+                im = im.resize((MAX_WIDTH, h), Image.LANCZOS)
+            buf = BytesIO()
+            im.save(buf, format="JPEG", quality=quality, optimize=True)
+            out = buf.getvalue()
+    except Exception:
+        return data, suffix
+    return (out, suffix) if len(out) < len(data) else (data, suffix)
+
+
+def save_image(data: bytes, suffix: str = ".jpg", quality: int = JPEG_QUALITY) -> str:
     """写入图片，返回不含扩展名的 hash。适配器也调用这个函数。"""
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    data, suffix = compress(data, suffix, quality)
     h = hashlib.sha256(data).hexdigest()[:32]
     path = IMAGE_DIR / f"{h}{suffix}"
     if not path.exists():
