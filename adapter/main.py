@@ -32,6 +32,7 @@ from adapter.qq_official_adapter import (  # noqa: E402
     CoreClient,
     auth_headers,
     send_c2c_image_by_url,
+    next_msg_seq,
     send_group_image_by_url,
     send_group_text,
     token_mgr,
@@ -129,7 +130,13 @@ class QQOfficialBot:
                 return
 
     async def _dispatch(self, event: str, data: dict[str, Any]) -> None:
-        log.info("收到事件 %s", event)
+        log.info(
+            "收到事件 %s openid=%s msg_id=%s text=%r",
+            event,
+            (data.get("author", {}) or {}).get("user_openid", ""),
+            data.get("id", ""),
+            str(data.get("content", ""))[:60],
+        )
         if event in ("GROUP_AT_MESSAGE_CREATE", "AT_MESSAGE_CREATE"):
             await self._on_group_message(data)
         elif event == "C2C_MESSAGE_CREATE":
@@ -238,7 +245,12 @@ class QQOfficialBot:
             if target_type == "direct":
                 # C2C 文本
                 url = f"{API_BASE}/v2/users/{target_id}/messages"
-                payload = {"content": text, "msg_type": 0, "msg_id": msg_id}
+                payload = {
+                    "content": text,
+                    "msg_type": 0,
+                    "msg_id": msg_id,
+                    "msg_seq": next_msg_seq(f"users:{target_id}"),
+                }
                 async with self.session.post(
                     url, headers=auth_headers(token), json=payload
                 ) as resp:

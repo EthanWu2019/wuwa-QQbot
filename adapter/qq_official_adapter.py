@@ -54,6 +54,16 @@ INTENTS = (1 << 25) | (1 << 30) | (1 << 12) | (1 << 26)
 
 RECV_HEARTBEAT_ACK = False
 _ws_seq: Optional[int] = None
+
+# 官方要求同一会话内 msg_seq 递增，复用会被判重拒收(40054005)。
+# 每个 chat 一个计数，用完归零(官方允许 0..49 循环)。
+_msg_seq: dict[str, int] = {}
+
+
+def next_msg_seq(chat_key: str) -> int:
+    n = _msg_seq.get(chat_key, 0)
+    _msg_seq[chat_key] = (n + 1) % 50
+    return n
 _session_id: Optional[str] = None
 
 
@@ -200,35 +210,62 @@ async def send_group_text(
         return await resp.json()
 
 
-async def send_group_image_by_url(
-    session: aiohttp.ClientSession, token: str, group_openid: str, url: str, msg_id: str
+async def _upload_media_by_url(
+    session: aiohttp.ClientSession, token: str, kind: str, target_id: str, url: str
 ) -> dict:
     """
-    用公网 URL 发图。官方 base 64.9 万字节上限内可行，但要求 URL 公网可达。
+    先把图片交给腾讯的富媒体接口登记，拿到 file_info。
+
+    ⚠️ 不能在 messages 接口里直接写 media:{type:1,url:...} —— 那是无效写法，
+    会返回 40034032「请求参数file_info无效」。必须两步走：
+        POST /v2/{users|groups}/{id}/files  {file_type, url, srv_send_msg}
+        → file_info
+        POST /v2/{users|groups}/{id}/messages  {msg_type:7, media:{file_info}}
+    file_type: 1=图片 2=语音 3=视频 4=文件（注意是 file_type，不是 type）
     """
-    endpoint = f"{API_BASE}/v2/groups/{group_openid}/messages"
+    endpoint = f"{API_BASE}/v2/{kind}/{target_id}/files"
+    payload = {"file_type": 1, "url": url, "srv_send_msg": False}
+    async with session.post(endpoint, headers=auth_headers(token), json=payload) as resp:
+        return await resp.json()
+
+
+async def _send_media_msg(
+    session: aiohttp.ClientSession,
+    token: str,
+    kind: str,
+    target_id: str,
+    url: str,
+    msg_id: str,
+) -> dict:
+    """上传 → 拿 file_info → 发富媒体消息。"""
+    upload = await _upload_media_by_url(session, token, kind, target_id, url)
+    file_info = upload.get("file_info") or (upload.get("data") or {}).get("file_info")
+    if not file_info:
+        # 登记失败就把腾讯的原始报错带出去，别静默吞掉
+        return {"upload_error": upload}
+
+    endpoint = f"{API_BASE}/v2/{kind}/{target_id}/messages"
     payload = {
-        "content": "",
+        "content": " ",
         "msg_type": 7,
         "msg_id": msg_id,
-        "media": {"type": 1, "url": url},
+        "msg_seq": next_msg_seq(f"{kind}:{target_id}"),
+        "media": {"file_info": file_info},
     }
     async with session.post(endpoint, headers=auth_headers(token), json=payload) as resp:
         return await resp.json()
+
+
+async def send_group_image_by_url(
+    session: aiohttp.ClientSession, token: str, group_openid: str, url: str, msg_id: str
+) -> dict:
+    return await _send_media_msg(session, token, "groups", group_openid, url, msg_id)
 
 
 async def send_c2c_image_by_url(
     session: aiohttp.ClientSession, token: str, openid: str, url: str, msg_id: str
 ) -> dict:
-    endpoint = f"{API_BASE}/v2/users/{openid}/messages"
-    payload = {
-        "content": "",
-        "msg_type": 7,
-        "msg_id": msg_id,
-        "media": {"type": 1, "url": url},
-    }
-    async with session.post(endpoint, headers=auth_headers(token), json=payload) as resp:
-        return await resp.json()
+    return await _send_media_msg(session, token, "users", openid, url, msg_id)
 
 
 def _to_text(content: list[dict[str, Any]]) -> str:
