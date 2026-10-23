@@ -117,6 +117,35 @@ def patch_icon_round() -> bool:
     )
     _write(p, src)
     print("  ✓ 帮助页图标圆角")
+    return patch_badge_offset()
+
+
+# ── 3b. 版本 badge 遮挡标题 ─────────────────────────────────
+def patch_badge_offset() -> bool:
+    """
+    标题用 anchor="lm" 按文字左边界绘制，badge 用 paste 按图片左上角，
+    两者坐标基准不同。英文长标题时误差被字号掩盖，中文短标题
+    （如「泰缇斯系统帮助」）就直接压在文字上。
+    修法：plugin_name_len 对齐 bbox 左边界。
+    """
+    p = VENDOR / "gsuid_core" / "help" / "draw_new_plugin_help.py"
+    src = _read(p)
+    old = '    x1, y1, x2, y2 = core_font(50).getbbox(_banner_name)\n    plugin_name_len = int(x2 - x1)'
+    new = (
+        "    # 泰缇斯系统 2026-10-23：标题按文字左边界(anchor=lm)绘制，\n"
+        "    # badge 按图片左上角 paste，坐标基准不同会互相压盖。\n"
+        "    _title_font = core_font(50)\n"
+        "    x1, y1, x2, y2 = _title_font.getbbox(_banner_name)\n"
+        "    plugin_name_len = int(x2 - x1) - x1"
+    )
+    if new in src:
+        print("  · 版本 badge 偏移已修")
+        return True
+    if old not in src:
+        print("  ✗ 找不到 badge 定位代码（上游可能已改）")
+        return False
+    _write(p, src.replace(old, new, 1))
+    print("  ✓ 版本 badge 不再压标题")
     return True
 
 
@@ -158,6 +187,10 @@ def check() -> bool:
     good = "PLUGIN_ICON_RADIUS_RATIO" in s
     ok &= good
     print(f"  {'✓' if good else '✗'} 图标圆角")
+
+    good = "plugin_name_len = int(x2 - x1) - x1" in s
+    ok &= good
+    print(f"  {'✓' if good else '✗'} 版本 badge 偏移")
 
     cfg = ROOT / "vendor" / "gsuid_core" / "data" / "config.json"
     if cfg.exists():
