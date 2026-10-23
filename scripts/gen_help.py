@@ -6,6 +6,7 @@
 
 import asyncio
 import base64
+import os
 import pathlib
 import sys
 
@@ -28,10 +29,17 @@ def decode_b64(data: str) -> bytes:
 
 
 async def main(text: str) -> None:
+    # 必须用独立 bot_id：gsuid_core 的 active_bot[bot_id] 按 id 存实例，
+    # 用 "qq" 会抢走正式 adapter 的 Bot 实例 —— 探针退出后 core 认为
+    # 「已断开」但旧连接不报错，adapter 进程活着却再也收不到回程。
+    # （2026-10-23 03:02 / 03:24 两次实测踩中）
+    probe_id = os.getenv("PROBE_BOT_ID", "probe_preview")
     async with aiohttp.ClientSession() as s:
-        async with s.ws_connect("ws://127.0.0.1:8765/ws/qq", max_msg_size=0) as ws:
+        async with s.ws_connect(
+            f"ws://127.0.0.1:8765/ws/{probe_id}", max_msg_size=0
+        ) as ws:
             r = MessageReceive(
-                bot_id="qq",
+                bot_id=probe_id,
                 bot_self_id="1905904359",
                 msg_id="preview-1",
                 user_type="direct",
