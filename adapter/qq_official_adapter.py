@@ -269,14 +269,17 @@ async def send_c2c_image_by_url(
 
 
 def _to_text(content: list[dict[str, Any]]) -> str:
+    """
+    只取文本段。
+
+    ⚠️ 之前这里把图片段渲染成 `[图片]` 字面量当成消息正文发出去，
+    用户在 QQ 上会直接看到「[图片]」三个字。图片必须走富媒体接口单独发，
+    不能塞进 content 文本里。
+    """
     out: list[str] = []
     for seg in content or []:
-        t = seg.get("type")
-        d = seg.get("data")
-        if t == "text":
-            out.append(str(d))
-        elif t == "image":
-            out.append("[图片]")
+        if seg.get("type") == "text":
+            out.append(str(seg.get("data")))
     return "\n".join(out).strip()
 
 

@@ -218,11 +218,8 @@ class QQOfficialBot:
 
         token = await token_mgr.get(self.session)
 
-        # 官方富媒体要求 content 非空，纯图消息要带一个占位文本
-        if images and not text:
-            text = " "
-
         # 1) 图片优先（鸣潮面板都是图）
+        sent_img = 0
         for img in images:
             url = self._normalize_image_url(img)
             if not url:
@@ -236,12 +233,16 @@ class QQOfficialBot:
                     res = await send_group_image_by_url(
                         self.session, token, target_id, url, msg_id
                     )
+                if res.get("id"):
+                    sent_img += 1
                 log.info("发图 %s -> %s", url[:80], res.get("id", res))
             except Exception as exc:
                 log.warning("发图失败: %s", exc)
 
         # 2) 文本
-        if text:
+        # 纯图消息不要补占位文本再发一遍——富媒体消息的 content 已在
+        # send_*_image_by_url 内部带上 " "，这里再发就是多余的一条消息。
+        if text and not (sent_img and len(text) <= 1 and text.isspace()):
             if target_type == "direct":
                 # C2C 文本
                 url = f"{API_BASE}/v2/users/{target_id}/messages"
