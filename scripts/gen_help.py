@@ -44,7 +44,10 @@ async def main(text: str) -> None:
                 msg_id="preview-1",
                 user_type="direct",
                 group_id=None,
-                user_id="3401895383",
+                user_id=os.getenv("PROBE_USER_ID", "5E7C8B8BDDEB7F263662B0E3A3BF3A85"),
+                # 主人已加入 core 的 masters（user_pm=0），这里对齐，
+                # 否则 pm=1 的命令（如 ww全部签到）会被鉴权拦掉。
+                user_pm=0,
                 sender={"nickname": "preview"},
                 content=[Message(type="text", data=text)],
             )

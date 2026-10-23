@@ -17,9 +17,12 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 VENDOR = ROOT / "vendor" / "gsuid_core"
 PLUGIN = VENDOR / "gsuid_core" / "plugins" / "XutheringWavesUID" / "XutheringWavesUID"
+ROVER_SIGN = VENDOR / "gsuid_core" / "plugins" / "RoverSign" / "RoverSign"
 
 BOT_NAME = "泰缇斯系统"
 BOT_VERSION = "1.0.0"
+# 主人 QQ openid（私聊绑定表里的那条）。放 masters 才能用 pm=1 的命令。
+MASTER_ID = "5E7C8B8BDDEB7F263662B0E3A3BF3A85"
 BANNER_SUB_TEXT = "这里是黑海岸，你永远的家。"
 
 # 帮助页文件 → 是否同时替换 banner_sub_text（False = 保留该页原副标题）
@@ -167,6 +170,85 @@ def patch_command_start() -> bool:
     return True
 
 
+def patch_masters() -> bool:
+    """把主人加进 core 的 masters。
+
+    没有 masters 时，`user_pm` 走 `msg.user_pm`（默认 6），
+    而 pm=1 的命令（如 ww全部签到）判定是 `if user_pm > _sv.pm: return False`
+    → 6 > 1 直接被拒。主人自己的账号也调不动这类命令。
+    """
+    p = ROOT / "vendor" / "gsuid_core" / "data" / "config.json"
+    if not p.exists():
+        print("  ✗ data/config.json 不存在")
+        return False
+    d = json.loads(p.read_text(encoding="utf-8"))
+    masters = d.get("masters") or []
+    if MASTER_ID in masters:
+        print("  · masters 已含主人")
+        return True
+    masters.append(MASTER_ID)
+    d["masters"] = masters
+    p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  ✓ masters 已加入主人（{len(masters)} 人）")
+    return True
+
+
+def patch_sign_msgs() -> bool:
+    """签到回执改成带角色名和 UID 的详细格式。
+
+    上游两处都只返回「签到成功！」，主人 2026-10-23 要求改成
+    「鸣潮签到成功！+ 角色名 + UID」。
+    """
+    p = ROVER_SIGN / "roversign_sign" / "main.py"
+    if not p.exists():
+        print("  ✗ RoverSign main.py 不存在")
+        return False
+    src = p.read_text(encoding="utf-8")
+    ok = True
+    if 'f"鸣潮签到成功！\\n角色：' in src:
+        print("  · 鸣潮签到回执已是详细格式")
+    else:
+        print("  ✗ 鸣潮签到回执未打补丁")
+        ok = False
+    if 'f"战双帕弥什签到成功！\\n角色：' in src:
+        print("  · 战双签到回执已是详细格式")
+    else:
+        print("  ✗ 战双签到回执未打补丁")
+        ok = False
+    if "async def _waves_role_name(" in src:
+        print("  · 鸣潮角色名获取已就位")
+    else:
+        print("  ✗ 缺少 _waves_role_name")
+        ok = False
+    return ok
+
+
+def patch_live_bot_ids() -> bool:
+    """广播推送只发给真正在线的 bot 实例。
+
+    gsuid_core 断开连接后故意保留 _Bot 实例 5 分钟供重连
+    （server.py `_disconnected_at`）。直接遍历 `gss.active_bot` 会把
+    同一条广播发给每个残留实例 —— 表现是「签到成功！」收到两遍。
+    """
+    ok = True
+    for rel in (
+        "gsuid_core/utils/boardcast/send_msg.py",
+        "gsuid_core/plugins/RoverSign/RoverSign/utils/boardcast.py",
+    ):
+        p = VENDOR / rel
+        if not p.exists():
+            print(f"  ✗ {rel} 不存在")
+            ok = False
+            continue
+        src = p.read_text(encoding="utf-8")
+        if "def _live_bot_ids(" in src and "for bot_id in _live_bot_ids()" in src:
+            print(f"  · {rel.split('/')[-1]} 已打补丁")
+        else:
+            print(f"  ✗ {rel.split('/')[-1]} 未打补丁")
+            ok = False
+    return ok
+
+
 def check() -> bool:
     print("验证补丁状态：")
     ok = True
@@ -203,6 +285,16 @@ def check() -> bool:
     good = icon.exists()
     ok &= good
     print(f"  {'✓' if good else '✗'} 头像 {icon.name}")
+
+    ok &= patch_sign_msgs()
+    ok &= patch_live_bot_ids()
+
+    # 主人必须在 masters 里，否则 pm=1 的命令（如 ww全部签到）会被鉴权拦掉
+    if cfg.exists():
+        d = json.loads(cfg.read_text(encoding="utf-8"))
+        good = MASTER_ID in (d.get("masters") or [])
+        ok &= good
+        print(f"  {'✓' if good else '✗'} masters 含主人")
     return ok
 
 
@@ -214,6 +306,9 @@ def main() -> int:
     patch_pages()
     patch_icon_round()
     patch_command_start()
+    patch_masters()
+    patch_sign_msgs()
+    patch_live_bot_ids()
     print("\n生效步骤：")
     print("  find vendor/gsuid_core/gsuid_core -name __pycache__ -type d -exec rm -rf {} +")
     print("  ./scripts/wuwa.sh restart core   # 等 ~60s")
