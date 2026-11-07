@@ -1,13 +1,16 @@
 .venv/
 .env
-vendor/
 __pycache__/
 *.pyc
 data/
 logs/
-data/
-logs/
-data/
 assets/bot_avatar.png
 .version.py.bak
 .*.py.bak
+
+# vendor/ 整体不进版本控制（232MB，含字体/图片资源）
+# 2026-11-07 事故：XutheringWavesUID 曾软链到 /tmp/ww_probe/main，
+# macOS 清 /tmp 把插件删光，机器人变哑巴。
+# 现在改成：插件软链永久目录 vendor/plugins_src/，
+# 且 scripts/check_plugins.sh 能检测缺失并从上游 clone 恢复。
+vendor/

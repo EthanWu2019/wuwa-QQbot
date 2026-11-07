@@ -10,6 +10,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD/vendor/gsuid_core:${PYTHONPATH:-}"
 
+# 启动前自检插件完整性。
+# 2026-11-07 事故：插件曾软链到 /tmp，macOS 清 /tmp 后被删光，
+# core 只加载 691 个触发器（正常 1680+），机器人全程没反应。
+# 这里先跑一遍检查，缺文件就自动从永久副本/上游恢复。
+./scripts/check_plugins.sh || {
+  echo "[run_core] 插件自检失败，core 可能起不来" >&2
+  exit 1
+}
+
 CORE_HOST="${CORE_HOST:-0.0.0.0}"
 CORE_PORT="${CORE_PORT:-8765}"
 
