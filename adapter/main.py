@@ -240,8 +240,9 @@ class QQOfficialBot:
                 log.warning("发图失败: %s", exc)
 
         # 2) 文本
-        # 纯图消息不要补占位文本再发一遍——富媒体消息的 content 已在
-        # send_*_image_by_url 内部带上 " "，这里再发就是多余的一条消息。
+        # 纯图消息不要再补一条文本 —— 富媒体消息本身已经是完整的一条，
+        # 多发一次就多一条消息。（2026-11-07：富媒体 payload 已去掉
+        # content 占位符，图片下方不再有空行）
         if text and not (sent_img and len(text) <= 1 and text.isspace()):
             if target_type == "direct":
                 # C2C 文本

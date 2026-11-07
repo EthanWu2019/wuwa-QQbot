@@ -271,13 +271,17 @@ async def _send_media_msg(
         return {"upload_error": upload}
 
     endpoint = f"{API_BASE}/v2/{kind}/{target_id}/messages"
-    payload = {
-        "content": " ",
+    payload: dict = {
         "msg_type": 7,
         "msg_id": msg_id,
         "msg_seq": next_msg_seq(f"{kind}:{target_id}"),
         "media": {"file_info": file_info},
     }
+    # ⚠️ 不要加 content 字段。
+    # 腾讯官方文档的 msg_type=7 示例里根本没有 content；之前这里塞了
+    # 一个 " " 当占位符，结果 QQ 客户端把图片消息渲染成「图片 + 下面
+    # 空一行」（主人 2026-11-07 反馈）。2026-11-07 实测三种都发得出去：
+    # content=" " / content="" / 完全不带 content —— 不带最干净。
     async with session.post(endpoint, headers=auth_headers(token), json=payload) as resp:
         return await resp.json()
 
